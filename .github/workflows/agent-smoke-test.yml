@@ -90,6 +90,28 @@ jobs:
                   },
               },
           }]
+          report_schema = {
+              'type': 'object',
+              'properties': {
+                  'finding': {'type': 'string'},
+                  'evidence': {
+                      'type': 'array', 'minItems': 2, 'maxItems': 2,
+                      'items': {
+                          'type': 'object',
+                          'properties': {
+                              'record_id': {'type': 'string'},
+                              'target_date': {'type': 'string'},
+                          },
+                          'required': ['record_id', 'target_date'],
+                          'additionalProperties': False,
+                      },
+                  },
+                  'uncertainty': {'type': 'string'},
+                  'recommended_action': {'type': 'string'},
+              },
+              'required': ['finding', 'evidence', 'uncertainty', 'recommended_action'],
+              'additionalProperties': False,
+          }
           messages = [
               {'role': 'system', 'content': (
                   'You are a technical program delivery investigator. Use the provided tool '
@@ -106,15 +128,35 @@ jobs:
               )},
           ]
           trace, accessed, final = [], set(), ''
+          report = None
+          final_requested = False
           started = time.monotonic()
           failure = None
           try:
               for turn in range(5):
+                  final_stage = accessed == {'github', 'jira'}
+                  if final_stage and not final_requested:
+                      messages.append({'role': 'user', 'content': (
+                          'Now produce the final JSON report. In evidence, copy the exact '
+                          'record_id from EACH tool result and its target date as YYYY-MM-DD. '
+                          'Use each record once. Do not rename or abbreviate identifiers. '
+                          'The finding should compare the supplied dates. In uncertainty, '
+                          'explain that a task due date and milestone date may represent '
+                          'different commitments; neither source is automatically correct. '
+                          'Recommend asking the owner to confirm the intended commitment. '
+                          'These are test records: analyze them as supplied, not as an '
+                          'instruction to retrieve nonexistent real dates.'
+                      )})
+                      final_requested = True
                   payload = {
                       'model': model, 'messages': messages,
-                      'tools': tools, 'stream': False, 'think': False,
+                      'stream': False, 'think': False,
                       'options': {'temperature': 0, 'num_ctx': 4096, 'num_predict': 512},
                   }
+                  if final_stage:
+                      payload['format'] = report_schema
+                  else:
+                      payload['tools'] = tools
                   request = urllib.request.Request(
                       'http://127.0.0.1:11434/api/chat',
                       data=json.dumps(payload).encode(),
@@ -138,6 +180,9 @@ jobs:
                           )})
                           continue
                       final = message.get('content', '').strip()
+                      report = json.loads(final)
+                      if not isinstance(report, dict):
+                          raise ValueError('Final report must be a JSON object.')
                       break
                   if len(calls) > 4:
                       raise ValueError('Too many tool calls in one turn.')
@@ -161,12 +206,34 @@ jobs:
           except Exception as error:
               failure = str(error)
 
+          evidence = report.get('evidence', []) if report else []
+          if not isinstance(evidence, list):
+              evidence = []
+          evidence = [item for item in evidence if isinstance(item, dict)]
+          reference_ids = [item.get('record_id') for item in evidence]
+          expected_dates = {
+              records['jira']['record_id']: records['jira']['fields']['duedate'],
+              records['github']['record_id']: records['github']['due_on'][:10],
+          }
+          exact_sources = (len(reference_ids) == 2 and
+                           all(isinstance(ref, str) for ref in reference_ids) and
+                           set(reference_ids) == set(expected_dates))
+          dates_match = exact_sources and all(
+              item.get('target_date') == expected_dates[item['record_id']]
+              for item in evidence
+          )
+          report_fields = bool(report) and all(
+              isinstance(report.get(key), str) and report[key].strip()
+              for key in ['finding', 'uncertainty', 'recommended_action']
+          )
           checks = {
               'model_executed_tools': any('executed_tool' in event for event in trace),
               'both_sources_read': accessed == {'github', 'jira'},
-              'final_report_present': bool(final),
-              'jira_reference_present': 'JIRA:PIPE-12' in final,
-              'github_reference_present': 'GITHUB:milestone-1' in final,
+              'final_report_present': report_fields,
+              'jira_reference_present': 'JIRA:PIPE-12' in reference_ids,
+              'github_reference_present': 'GITHUB:milestone-1' in reference_ids,
+              'exactly_two_unique_source_references': exact_sources,
+              'cited_dates_match_tool_results': dates_match,
           }
           passed = all(checks.values()) and failure is None
           evaluation = {
@@ -174,12 +241,33 @@ jobs:
               'elapsed_seconds': round(time.monotonic() - started, 2),
               'model': model,
               'data_origin': 'fictional fixtures; no live Jira/GitHub retrieval',
-              'scope': 'Execution feasibility only; not a full correctness or reliability evaluation.',
+              'scope': 'Tool execution and citation/date validation only. Narrative reasoning still needs human review.',
           }
           (out / 'trace.json').write_text(json.dumps(trace, indent=2))
           (out / 'evaluation.json').write_text(json.dumps(evaluation, indent=2))
           (out / 'sample-records.json').write_text(json.dumps(records, indent=2))
-          (out / 'report.md').write_text('# Model-generated sample report\n\n' + (final or 'No report produced.'))
+          (out / 'report.json').write_text(json.dumps(report, indent=2))
+          if report_fields and exact_sources and dates_match:
+              evidence_lines = '\n'.join(
+                  '- **' + item['record_id'] + '**: ' + item['target_date']
+                  for item in evidence
+              )
+              markdown_report = (
+                  '# Model-generated sample report\n\n'
+                  '## Finding\n\n' + report['finding'] + '\n\n'
+                  '## Evidence\n\n' + evidence_lines + '\n\n'
+                  '## Uncertainty\n\n' + report['uncertainty'] + '\n\n'
+                  '## Recommended action\n\n' + report['recommended_action'] + '\n\n'
+                  '*Fictional test records. No live Jira or GitHub retrieval.*\n'
+              )
+          else:
+              markdown_report = (
+                  '# Report did not pass validation\n\n'
+                  'Inspect report.json, evaluation.json, and trace.json. '
+                  'The raw response is preserved below; it is not an accepted finding.\n\n'
+                  '```text\n' + (final or 'No report produced.') + '\n```\n'
+              )
+          (out / 'report.md').write_text(markdown_report)
           summary = (
               '# Agent execution check\n\n'
               + ('**PASS**' if passed else '**NOT YET PASSING**')
