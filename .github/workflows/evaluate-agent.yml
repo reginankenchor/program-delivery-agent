@@ -1,0 +1,82 @@
+name: Evaluate delivery agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      projects:
+        description: Sample projects to investigate
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - RFP-001
+          - RFP-002
+          - RFP-003
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evaluate-delivery-agent
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: src
+    steps:
+      - name: Read project files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Test data, permissions, and validation without a model
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Start model on the GitHub-hosted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          docker run -d --name pda-model \
+            -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_NO_CLOUD=1 \
+            -e OLLAMA_NUM_PARALLEL=1 \
+            -e OLLAMA_CONTEXT_LENGTH=4096 \
+            ollama/ollama:latest
+          python3 - <<'PY'
+          import time, urllib.request
+          for attempt in range(60):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:11434/api/version', timeout=2) as response:
+                      print(response.read().decode())
+                  break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit('Model runtime did not start.')
+          PY
+          docker exec pda-model ollama pull qwen3:1.7b
+          docker inspect pda-model --format '{{.Image}}' > reports/runtime-image.txt
+          curl --fail --silent http://127.0.0.1:11434/api/tags > reports/model-metadata.json
+
+      - name: Run actual agent and evaluate selected projects
+        env:
+          SELECTED_PROJECTS: ${{ inputs.projects }}
+        run: python3 -m pda.run --projects "$SELECTED_PROJECTS"
+
+      - name: Save small reports and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: delivery-agent-evaluation
+          path: reports/
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Stop temporary runtime
+        if: always()
+        run: docker rm -f pda-model || true
