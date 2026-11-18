@@ -1,0 +1,9 @@
+{
+  "id": 2001,
+  "number": 1,
+  "title": "CSV Export Delivery",
+  "due_on": "2026-12-15T00:00:00Z",
+  "state": "open",
+  "updated_at": "2026-11-18T08:00:00Z",
+  "description": "Explicit sample mapping to DEMO-1 for RFP-001."
+}

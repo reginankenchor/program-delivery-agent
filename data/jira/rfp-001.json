@@ -1,0 +1,18 @@
+{
+  "id": "1001",
+  "key": "DEMO-1",
+  "fields": {
+    "summary": "CSV Export Delivery",
+    "duedate": "2026-11-30",
+    "status": {
+      "name": "In progress",
+      "statusCategory": {
+        "key": "indeterminate"
+      }
+    },
+    "updated": "2026-11-18T08:00:00.000+0000",
+    "labels": [
+      "rfp-001"
+    ]
+  }
+}

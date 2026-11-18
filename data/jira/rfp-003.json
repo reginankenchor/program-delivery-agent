@@ -1,0 +1,18 @@
+{
+  "id": "1003",
+  "key": "DEMO-3",
+  "fields": {
+    "summary": "Metrics Endpoint",
+    "duedate": "2026-12-10",
+    "status": {
+      "name": "In progress",
+      "statusCategory": {
+        "key": "indeterminate"
+      }
+    },
+    "updated": "2026-11-18T08:00:00.000+0000",
+    "labels": [
+      "rfp-003"
+    ]
+  }
+}

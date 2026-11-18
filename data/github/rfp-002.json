@@ -1,0 +1,9 @@
+{
+  "id": 2002,
+  "number": 2,
+  "title": "Documentation Preview",
+  "due_on": "2026-12-03T00:00:00Z",
+  "state": "open",
+  "updated_at": "2026-11-18T08:00:00Z",
+  "description": "Explicit sample mapping to DEMO-2 for RFP-002."
+}

@@ -1,0 +1,39 @@
+{
+  "origin": "fictional_fixture",
+  "description": "Authored test records, not downloaded or connected account data.",
+  "projects": [
+    {
+      "id": "RFP-001",
+      "name": "CSV Export Delivery",
+      "origin": "fictional_fixture",
+      "question": "Do the mapped delivery target dates agree?",
+      "mapping_context": "These records are explicitly linked for the same sample deliverable. Task and milestone date meanings must still be confirmed by the owner.",
+      "sources": {
+        "github": "data/github/rfp-001.json",
+        "jira": "data/jira/rfp-001.json"
+      }
+    },
+    {
+      "id": "RFP-002",
+      "name": "Documentation Preview",
+      "origin": "fictional_fixture",
+      "question": "Do the mapped delivery target dates agree?",
+      "mapping_context": "These records are explicitly linked for the same sample deliverable. Task and milestone date meanings must still be confirmed by the owner.",
+      "sources": {
+        "github": "data/github/rfp-002.json",
+        "jira": "data/jira/rfp-002.json"
+      }
+    },
+    {
+      "id": "RFP-003",
+      "name": "Metrics Endpoint",
+      "origin": "fictional_fixture",
+      "question": "Do the mapped delivery target dates agree?",
+      "mapping_context": "These records are explicitly linked for the same sample deliverable. Task and milestone date meanings must still be confirmed by the owner.",
+      "sources": {
+        "github": "data/github/rfp-003.json",
+        "jira": "data/jira/rfp-003.json"
+      }
+    }
+  ]
+}
