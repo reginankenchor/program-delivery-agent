@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from pda.agent import investigate, validate_report
+from pda.agent import investigate, validate_report, final_instruction
 from pda.data import load_projects, read_record, record_date, source_path
 from pda.run import evaluate, main
 
@@ -126,8 +126,97 @@ class DeliveryTests(unittest.TestCase):
     def test_wrong_classification_fails_even_with_valid_evidence(self):
         result = copy.deepcopy(self.result)
         result["report"]["status"] = "aligned"
-        self.assertTrue(result["validation"]["passed"])
+        checks = validate_report(result["report"], self.records)
+        self.assertFalse(checks["status_matches_source_dates"])
+        result["validation"]["checks"] = checks
+        result["validation"]["passed"] = all(checks.values())
         self.assertFalse(evaluate(result, "potential_mismatch")["passed"])
+
+    def test_aligned_rejected_when_a_source_date_is_missing(self):
+        project = self.projects[2]
+        result = investigate(ROOT, project, StubClient())
+        result["report"]["status"] = "aligned"
+        records = {s: read_record(ROOT, project, s) for s in ("github", "jira")}
+        self.assertFalse(validate_report(result["report"], records)["status_matches_source_dates"])
+
+    def test_raw_github_timestamp_is_still_rejected(self):
+        report = copy.deepcopy(self.result["report"])
+        report["evidence"][0]["target_date"] = self.records["github"]["response"]["due_on"]
+        self.assertFalse(validate_report(report, self.records)["quoted_dates_match_sources"])
+
+    def test_final_instruction_uses_normalized_evidence(self):
+        prompt = final_instruction(self.records)
+        self.assertIn('"target_date": "2026-12-15"', prompt)
+        self.assertIn('"target_date": "2026-11-30"', prompt)
+        self.assertNotIn('"target_date": "2026-12-15T00:00:00Z"', prompt)
+
+    def test_failed_report_is_retried_with_feedback_and_not_overwritten(self):
+        class InitiallyWrong(StubClient):
+            def __init__(self):
+                self.attempts, self.prompts = 0, []
+
+            def chat(self, messages, final=False):
+                message = super().chat(messages, final)
+                if final:
+                    self.attempts += 1
+                    self.prompts.append(messages[-1]["content"])
+                    if self.attempts == 1:
+                        report = json.loads(message["content"])
+                        report["status"] = "aligned"
+                        report["evidence"][0]["target_date"] += "T00:00:00Z"
+                        message["content"] = json.dumps(report)
+                return message
+
+        client = InitiallyWrong()
+        result = investigate(ROOT, self.project, client)
+        self.assertTrue(result["validation"]["passed"])
+        self.assertEqual(client.attempts, 2)
+        self.assertIn("status_matches_source_dates", client.prompts[1])
+        self.assertIn("quoted_dates_match_sources", client.prompts[1])
+        attempts = [t for t in result["trace"] if "report_attempt" in t]
+        self.assertFalse(attempts[0]["validation"]["status_matches_source_dates"])
+        self.assertTrue(attempts[1]["validation"]["status_matches_source_dates"])
+        answers = [json.loads(t["model_message"]["content"])
+                   for t in result["trace"] if "model_message" in t
+                   and not t["model_message"].get("tool_calls")]
+        self.assertEqual(answers[0]["status"], "aligned")
+        self.assertEqual(result["report"]["status"], "potential_mismatch")
+
+    def test_persistently_wrong_model_fails_after_two_reports(self):
+        class AlwaysWrong(StubClient):
+            attempts = 0
+
+            def chat(self, messages, final=False):
+                message = super().chat(messages, final)
+                if final:
+                    self.attempts += 1
+                    report = json.loads(message["content"])
+                    report["status"] = "aligned"
+                    message["content"] = json.dumps(report)
+                return message
+
+        client = AlwaysWrong()
+        result = investigate(ROOT, self.project, client)
+        self.assertEqual(client.attempts, 2)
+        self.assertFalse(result["validation"]["passed"])
+        self.assertEqual(result["report"]["status"], "aligned")
+        self.assertIn("two attempts", result["validation"]["error"])
+
+    def test_invalid_json_can_be_corrected_once(self):
+        class BadJSON(StubClient):
+            attempts = 0
+
+            def chat(self, messages, final=False):
+                if final:
+                    self.attempts += 1
+                    if self.attempts == 1:
+                        return {"role": "assistant", "content": "not JSON"}
+                return super().chat(messages, final)
+
+        client = BadJSON()
+        result = investigate(ROOT, self.project, client)
+        self.assertTrue(result["validation"]["passed"])
+        self.assertEqual(client.attempts, 2)
 
     def test_positive_clean_and_missing_data_cases(self):
         expectations = json.loads((ROOT / "tests/expected.json").read_text())
