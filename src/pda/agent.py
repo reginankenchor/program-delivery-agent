@@ -68,6 +68,40 @@ class OllamaClient:
         return result["message"]
 
 
+def source_date_status(tool_records):
+    """Runtime consistency guard; never reads test expectations or changes the answer."""
+    if set(tool_records) != {"github", "jira"}:
+        return None
+    github_date = tool_records["github"]["normalized_target_date"]
+    jira_date = tool_records["jira"]["normalized_target_date"]
+    if github_date is None or jira_date is None:
+        return "insufficient_data"
+    return "aligned" if github_date == jira_date else "potential_mismatch"
+
+
+def final_instruction(records, failed_checks=None):
+    # Remove ambiguity between raw timestamps and the dates being compared.
+    evidence = [{"record_id": records[source]["record_id"],
+                 "target_date": records[source]["normalized_target_date"]}
+                for source in ("github", "jira")]
+    return (
+        "Return the final JSON report. Use ONLY these normalized values for date comparison. "
+        "Copy this exact evidence array into the report: " + json.dumps(evidence) + ". "
+        "Apply the rules in this order: "
+        "1. If EITHER target_date is null, status MUST be insufficient_data. "
+        "2. Otherwise, if the two dates are DIFFERENT, status MUST be potential_mismatch. "
+        "3. Otherwise, status MUST be aligned. "
+        "Both dates being present does NOT mean they match. "
+        "Never copy a timestamp ending in T00:00:00Z into target_date. "
+        "The finding must agree with the evidence and status; never invent a missing date. "
+        "Explain task-versus-milestone uncertainty separately; it does not change these rules. "
+        "Suggest a concise next action. "
+        + ("The previous report failed these checks: " + ", ".join(failed_checks)
+           + ". Correct the report using the source evidence."
+           if failed_checks else "")
+    )
+
+
 def validate_report(report, tool_records):
     checks = {"both_sources_read": set(tool_records) == {"github", "jira"}}
     shape = isinstance(report, dict) and set(report) == {
@@ -91,6 +125,9 @@ def validate_report(report, tool_records):
     checks["quoted_dates_match_sources"] = bool(exact_refs) and all(
         item["target_date"] == expected[item["record_id"]] for item in evidence
     )
+    source_status = source_date_status(tool_records)
+    checks["status_matches_source_dates"] = bool(shape and source_status is not None
+        and report.get("status") == source_status)
     return checks
 
 
@@ -113,18 +150,14 @@ def investigate(root, project, client, max_turns=6):
     ]
     records, trace, report, error = {}, [], None, None
     started = time.monotonic()
-    final_requested = False
+    final_attempts = 0
+    failed_checks = None
     try:
         for turn in range(max_turns):
             final = set(records) == {"github", "jira"}
-            if final and not final_requested:
-                messages.append({"role": "user", "content": (
-                    "Return the final JSON report now. Copy both exact record_id values "
-                    "and normalized_target_date values from the tool results into evidence. "
-                    "Use JSON null for a missing date. Cite each source exactly once. "
-                    "Explain date-meaning uncertainty and suggest an appropriate next action."
-                )})
-                final_requested = True
+            if final:
+                messages.append({"role": "user", "content": final_instruction(records, failed_checks)})
+                final_attempts += 1
             message = client.chat(messages, final=final)
             trace.append({"turn": turn + 1, "model_message": message})
             messages.append(message)
@@ -138,7 +171,17 @@ def investigate(root, project, client, max_turns=6):
                         "You still need: " + ", ".join(sorted({"github", "jira"} - set(records)))
                     )})
                     continue
-                report = json.loads(message.get("content", ""))
+                try:
+                    report = json.loads(message.get("content", ""))
+                except (ValueError, TypeError):
+                    report = None
+                attempt_checks = validate_report(report, records)
+                failed_checks = [key for key, passed in attempt_checks.items() if not passed]
+                trace.append({"report_attempt": final_attempts, "validation": attempt_checks})
+                if failed_checks and final_attempts < 2:
+                    continue
+                if failed_checks:
+                    error = "Report rejected after two attempts: " + ", ".join(failed_checks)
                 break
             if final:
                 raise ValueError("Tool call received during the final structured-report stage.")
