@@ -1,0 +1,108 @@
+name: Publish delivery website
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pages: read
+    steps:
+      - name: Find the latest successful website artifact
+        id: source
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = context.payload.repository.default_branch;
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: 'evaluate-agent.yml',
+              branch, status: 'success', per_page: 20
+            });
+            for (const run of data.workflow_runs) {
+              if (run.head_repository?.full_name !== `${owner}/${repo}`) continue;
+              const artifacts = await github.paginate(
+                github.rest.actions.listWorkflowRunArtifacts,
+                { owner, repo, run_id: run.id, per_page: 100 }
+              );
+              const artifact = artifacts.find(a =>
+                a.name === 'delivery-agent-website' && !a.expired
+              );
+              if (!artifact) continue;
+              core.setOutput('run_id', String(run.id));
+              core.setOutput('artifact_id', String(artifact.id));
+              core.info(`Using website from successful evaluation run ${run.id}, commit ${run.head_sha}.`);
+              return;
+            }
+            core.setFailed('No unexpired website artifact was found. Run Evaluate delivery agent with all projects, wait for Success, then run this publishing workflow again.');
+
+      - name: Download the built website
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact_id }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: _site
+
+      - name: Check the website and its report
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('_site')
+          required = ['index.html', 'styles.css', 'app.js', 'model.mjs', 'data/latest-report.json', 'data/fixtures.json']
+          if any(not (root / name).is_file() for name in required):
+              raise SystemExit('The website artifact is missing required files.')
+          if any(path.is_symlink() for path in root.rglob('*')):
+              raise SystemExit('Symbolic links are not permitted in the website artifact.')
+          report = json.loads((root / 'data/latest-report.json').read_text())
+          if report.get('passed') is not True or report.get('model') in (None, '', 'unit-test-stub'):
+              raise SystemExit('The website must contain a successful actual-model report.')
+          if report.get('origin') != 'fictional_fixture':
+              raise SystemExit('This demonstration only publishes fictional-fixture data.')
+          if report.get('provenance', {}).get('source_type') == 'shared_run_summary':
+              raise SystemExit('Publish the original model report, not the transcribed preview summary.')
+          projects = report.get('projects', [])
+          if not projects or any(
+              not p.get('validation', {}).get('passed') or not p.get('trace') or
+              not report.get('evaluation', {}).get(p.get('project_id'), {}).get('passed')
+              for p in projects
+          ):
+              raise SystemExit('A project is missing its passing evaluation or original trace.')
+          print(f'Website checked: {len(projects)} projects with original execution traces.')
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Package the website for Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish the website
+        id: deployment
+        uses: actions/deploy-pages@v4
