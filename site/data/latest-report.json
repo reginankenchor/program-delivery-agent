@@ -1,0 +1,130 @@
+{
+  "origin": "fictional_fixture",
+  "model": "qwen3:1.7b",
+  "generated_at": null,
+  "passed": true,
+  "provenance": {
+    "source_type": "shared_run_summary",
+    "commit_short": "8327e4f",
+    "workflow_duration_seconds": 257,
+    "note": "Transcribed from the successful workflow summary supplied by Regina in this conversation. Original tool traces have not been supplied for this run. The model name is taken from the workflow configuration."
+  },
+  "projects": [
+    {
+      "project_id": "RFP-001",
+      "project_name": "CSV Export Delivery",
+      "origin": "fictional_fixture",
+      "report": {
+        "status": "potential_mismatch",
+        "finding": "The mapped delivery target dates for RFP-001 differ: GitHub indicates a milestone due date of 2026-12-15, while Jira indicates a task due date of 2026-11-30.",
+        "evidence": [
+          {
+            "record_id": "RFP-001:github",
+            "target_date": "2026-12-15"
+          },
+          {
+            "record_id": "RFP-001:jira",
+            "target_date": "2026-11-30"
+          }
+        ],
+        "uncertainty": "Task and milestone dates are explicitly mapped, but their meanings are not confirmed by the owner. The dates are present but differ, so the status is potential_mismatch.",
+        "recommended_action": "Confirm the meaning of the dates (task vs. milestone) and resolve any discrepancies."
+      },
+      "trace": [],
+      "validation": {
+        "passed": true,
+        "checks": {},
+        "error": null
+      },
+      "elapsed_seconds": 48.61
+    },
+    {
+      "project_id": "RFP-002",
+      "project_name": "Documentation Preview",
+      "origin": "fictional_fixture",
+      "report": {
+        "status": "aligned",
+        "finding": "The normalized target dates for RFP-002 are both '2026-12-03', indicating alignment between the GitHub milestone and Jira task due dates.",
+        "evidence": [
+          {
+            "record_id": "RFP-002:github",
+            "target_date": "2026-12-03"
+          },
+          {
+            "record_id": "RFP-002:jira",
+            "target_date": "2026-12-03"
+          }
+        ],
+        "uncertainty": "Task and milestone dates are explicitly linked, but their meanings (task due date vs. milestone due date) are not confirmed by the owner. The dates themselves are consistent, but the classification of the dates as task or milestone remains uncertain.",
+        "recommended_action": "Confirm the classification of the dates as task due date (Jira) or milestone due date (GitHub) to ensure accurate project tracking."
+      },
+      "trace": [],
+      "validation": {
+        "passed": true,
+        "checks": {},
+        "error": null
+      },
+      "elapsed_seconds": 40.0
+    },
+    {
+      "project_id": "RFP-003",
+      "project_name": "Metrics Endpoint",
+      "origin": "fictional_fixture",
+      "report": {
+        "status": "insufficient_data",
+        "finding": "The GitHub milestone date is not provided, so the status is insufficient_data.",
+        "evidence": [
+          {
+            "record_id": "RFP-003:github",
+            "target_date": null
+          },
+          {
+            "record_id": "RFP-003:jira",
+            "target_date": "2026-12-10"
+          }
+        ],
+        "uncertainty": "The Jira task due date is explicitly set to 2026-12-10, but the GitHub milestone date is null. The context suggests it is aligned with the Jira date, but the source evidence does not confirm the meaning of the GitHub date.",
+        "recommended_action": "Confirm the meaning of the GitHub milestone date (if not already confirmed) and ensure alignment with the Jira task due date."
+      },
+      "trace": [],
+      "validation": {
+        "passed": true,
+        "checks": {},
+        "error": null
+      },
+      "elapsed_seconds": 65.91
+    }
+  ],
+  "evaluation": {
+    "RFP-001": {
+      "passed": true,
+      "checks": {
+        "evidence_validation_passed": true,
+        "classification_matches_expected": true
+      },
+      "expected_status": "potential_mismatch",
+      "actual_status": "potential_mismatch",
+      "scope": "Controlled date-consistency classification and citation checks. Narrative quality needs human review."
+    },
+    "RFP-002": {
+      "passed": true,
+      "checks": {
+        "evidence_validation_passed": true,
+        "classification_matches_expected": true
+      },
+      "expected_status": "aligned",
+      "actual_status": "aligned",
+      "scope": "Controlled date-consistency classification and citation checks. Narrative quality needs human review."
+    },
+    "RFP-003": {
+      "passed": true,
+      "checks": {
+        "evidence_validation_passed": true,
+        "classification_matches_expected": true
+      },
+      "expected_status": "insufficient_data",
+      "actual_status": "insufficient_data",
+      "scope": "Controlled date-consistency classification and citation checks. Narrative quality needs human review."
+    }
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "RFP-001": {
+    "github": {
+      "record_id": "RFP-001:github",
+      "provider": "github",
+      "origin": "fictional_fixture",
+      "file": "data/github/rfp-001.json",
+      "date_field": "due_on",
+      "date_meaning": "milestone due date",
+      "normalized_target_date": "2026-12-15",
+      "response": {
+        "id": 2001,
+        "number": 1,
+        "title": "CSV Export Delivery",
+        "due_on": "2026-12-15T00:00:00Z",
+        "state": "open",
+        "updated_at": "2026-11-18T08:00:00Z",
+        "description": "Explicit sample mapping to DEMO-1 for RFP-001."
+      }
+    },
+    "jira": {
+      "record_id": "RFP-001:jira",
+      "provider": "jira",
+      "origin": "fictional_fixture",
+      "file": "data/jira/rfp-001.json",
+      "date_field": "fields.duedate",
+      "date_meaning": "task due date",
+      "normalized_target_date": "2026-11-30",
+      "response": {
+        "id": "1001",
+        "key": "DEMO-1",
+        "fields": {
+          "summary": "CSV Export Delivery",
+          "duedate": "2026-11-30",
+          "status": {
+            "name": "In progress",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "updated": "2026-11-18T08:00:00.000+0000",
+          "labels": [
+            "rfp-001"
+          ]
+        }
+      }
+    }
+  },
+  "RFP-002": {
+    "github": {
+      "record_id": "RFP-002:github",
+      "provider": "github",
+      "origin": "fictional_fixture",
+      "file": "data/github/rfp-002.json",
+      "date_field": "due_on",
+      "date_meaning": "milestone due date",
+      "normalized_target_date": "2026-12-03",
+      "response": {
+        "id": 2002,
+        "number": 2,
+        "title": "Documentation Preview",
+        "due_on": "2026-12-03T00:00:00Z",
+        "state": "open",
+        "updated_at": "2026-11-18T08:00:00Z",
+        "description": "Explicit sample mapping to DEMO-2 for RFP-002."
+      }
+    },
+    "jira": {
+      "record_id": "RFP-002:jira",
+      "provider": "jira",
+      "origin": "fictional_fixture",
+      "file": "data/jira/rfp-002.json",
+      "date_field": "fields.duedate",
+      "date_meaning": "task due date",
+      "normalized_target_date": "2026-12-03",
+      "response": {
+        "id": "1002",
+        "key": "DEMO-2",
+        "fields": {
+          "summary": "Documentation Preview",
+          "duedate": "2026-12-03",
+          "status": {
+            "name": "In progress",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "updated": "2026-11-18T08:00:00.000+0000",
+          "labels": [
+            "rfp-002"
+          ]
+        }
+      }
+    }
+  },
+  "RFP-003": {
+    "github": {
+      "record_id": "RFP-003:github",
+      "provider": "github",
+      "origin": "fictional_fixture",
+      "file": "data/github/rfp-003.json",
+      "date_field": "due_on",
+      "date_meaning": "milestone due date",
+      "normalized_target_date": null,
+      "response": {
+        "id": 2003,
+        "number": 3,
+        "title": "Metrics Endpoint",
+        "due_on": null,
+        "state": "open",
+        "updated_at": "2026-11-18T08:00:00Z",
+        "description": "Explicit sample mapping to DEMO-3 for RFP-003."
+      }
+    },
+    "jira": {
+      "record_id": "RFP-003:jira",
+      "provider": "jira",
+      "origin": "fictional_fixture",
+      "file": "data/jira/rfp-003.json",
+      "date_field": "fields.duedate",
+      "date_meaning": "task due date",
+      "normalized_target_date": "2026-12-10",
+      "response": {
+        "id": "1003",
+        "key": "DEMO-3",
+        "fields": {
+          "summary": "Metrics Endpoint",
+          "duedate": "2026-12-10",
+          "status": {
+            "name": "In progress",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "updated": "2026-11-18T08:00:00.000+0000",
+          "labels": [
+            "rfp-003"
+          ]
+        }
+      }
+    }
+  }
+}
