@@ -36,6 +36,9 @@ jobs:
       - name: Test data, permissions, and validation without a model
         run: python3 -m unittest discover -s tests -v
 
+      - name: Test website report handling
+        run: node --test tests/site.test.mjs tests/site-ui.test.mjs
+
       - name: Start model on the GitHub-hosted runner
         shell: bash
         run: |
@@ -67,6 +70,17 @@ jobs:
         env:
           SELECTED_PROJECTS: ${{ inputs.projects }}
         run: python3 -m pda.run --projects "$SELECTED_PROJECTS"
+
+      - name: Build website from the successful agent report
+        run: python3 scripts/build_site.py
+
+      - name: Save website for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: delivery-agent-website
+          path: _site/
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Save small reports and traces
         if: always()
