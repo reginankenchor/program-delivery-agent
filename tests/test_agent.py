@@ -1,11 +1,13 @@
 import copy
+import io
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from pda.agent import investigate, validate_report, final_instruction
+from pda.agent import (investigate, validate_report, final_instruction,
+                       source_date_status, comparison_fact, report_schema, OllamaClient)
 from pda.data import load_projects, read_record, record_date, source_path
 from pda.run import evaluate, main
 
@@ -29,7 +31,10 @@ class StubClient:
         dates = [r["normalized_target_date"] for r in records]
         status = "insufficient_data" if None in dates else "aligned" if dates[0] == dates[1] else "potential_mismatch"
         report = {
-            "status": status, "finding": "Test fixture interpretation.",
+            "status": status, "finding": (
+                "Missing date from " + ", ".join(r["provider"] for r in records
+                                                if r["normalized_target_date"] is None)
+                if None in dates else "Test fixture interpretation."),
             "evidence": [{"record_id": r["record_id"], "target_date": r["normalized_target_date"]} for r in records],
             "uncertainty": "Task and milestone dates can have different meanings.",
             "recommended_action": "Confirm the delivery commitment with the owner.",
@@ -224,6 +229,70 @@ class DeliveryTests(unittest.TestCase):
         for project in self.projects:
             result = investigate(ROOT, project, StubClient())
             self.assertTrue(evaluate(result, expectations[project["id"]])["passed"])
+
+    def test_comparison_is_computed_for_unseen_dates_and_ids(self):
+        for first, second, status in [
+            ("2031-04-10", "2031-04-10", "aligned"),
+            ("2031-04-10", "2031-04-11", "potential_mismatch"),
+            (None, "2031-04-11", "insufficient_data"),
+            ("2031-04-10", None, "insufficient_data"),
+            (None, None, "insufficient_data"),
+        ]:
+            records = {s: {"record_id": "NEW-PROJECT:" + s,
+                           "normalized_target_date": d}
+                       for s, d in [("github", first), ("jira", second)]}
+            self.assertEqual(source_date_status(records), status)
+            fact = comparison_fact(records)
+            self.assertEqual(fact["status"], status)
+            self.assertEqual(report_schema(records)["properties"]["status"]["enum"], [status])
+            self.assertEqual(fact["evidence"][0]["target_date"], first)
+
+    def test_comparison_rejects_unread_sources(self):
+        with self.assertRaises(ValueError):
+            comparison_fact({"github": self.records["github"]})
+
+    def test_runtime_comparison_is_recorded_separately_from_model_tools(self):
+        facts = [t for t in self.result["trace"] if "computed_fact" in t]
+        self.assertEqual(len(facts), 1)
+        self.assertEqual(facts[0]["initiated_by"], "runtime")
+        self.assertEqual(facts[0]["result"]["status"], "potential_mismatch")
+        self.assertEqual(sum("executed_tool" in t for t in self.result["trace"]), 2)
+
+    def test_observed_missing_date_hallucination_is_rejected(self):
+        project = self.projects[2]
+        result = investigate(ROOT, project, StubClient())
+        records = {s: read_record(ROOT, project, s) for s in ("github", "jira")}
+        report = copy.deepcopy(result["report"])
+        report["status"] = "aligned"
+        report["finding"] = (
+            "The Jira task due date (2026-12-10) aligns with the GitHub milestone "
+            "due date (2026-12-10). Both dates are present and agree.")
+        checks = validate_report(report, records)
+        self.assertFalse(checks["status_matches_source_dates"])
+        self.assertFalse(checks["finding_acknowledges_missing_sources"])
+        report["status"] = "insufficient_data"
+        self.assertFalse(validate_report(report, records)["finding_acknowledges_missing_sources"])
+
+    def test_actual_client_constrains_status_and_removes_rejected_answer_from_context(self):
+        project = self.projects[2]
+        records = {s: read_record(ROOT, project, s) for s in ("github", "jira")}
+        messages = [{"role": "user", "content": "Investigate an unseen project."}]
+        messages += [{"role": "tool", "tool_name": "read_delivery_record",
+                      "content": json.dumps(records[s])} for s in ("github", "jira")]
+        messages += [{"role": "assistant", "content": "OLD_BAD_ANSWER_BOTH_DATES_MATCH"},
+                     {"role": "user", "content": final_instruction(records, ["status_matches_source_dates"])}]
+        seen = []
+        def fake_http(request, timeout):
+            payload = json.loads(request.data)
+            seen.append(payload)
+            return io.StringIO(json.dumps({"message": {"role": "assistant", "content": "{}"}}))
+        with patch("pda.agent.urllib.request.urlopen", side_effect=fake_http):
+            OllamaClient().chat(messages, final=True)
+        payload = seen[0]
+        self.assertEqual(payload["format"]["properties"]["status"]["enum"], ["insufficient_data"])
+        self.assertNotIn("OLD_BAD_ANSWER", json.dumps(payload["messages"]))
+        self.assertIn('"target_date": null', payload["messages"][-1]["content"])
+        self.assertNotIn("tools", payload)
 
     def test_cli_preserves_all_reports_and_traces(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as temp:
