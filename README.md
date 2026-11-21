@@ -1,10 +1,10 @@
 # Program Delivery Agent
 
 [![Live Demo][demo-badge]](https://reginankenchor.github.io/program-delivery-agent/)
-[![Release Notes][releases-badge]](#releases)
+[![Release Notes][releases-badge]](https://github.com/reginankenchor/program-delivery-agent/tree/main/docs/releases)
 [![View Workflow][workflow-badge]](https://github.com/reginankenchor/program-delivery-agent/actions/workflows/evaluate-agent.yml)
 
-Program Delivery Agent helps technical program managers review delivery plans alongside engineering work. It highlights discrepancies and gaps, links each finding to its source evidence, and suggests what to verify with the people responsible for delivery.
+Program Delivery Agent helps technical program managers review delivery plans alongside engineering work. It highlights discrepancies and gaps, links findings to their source records, and suggests what to verify with the people responsible for delivery.
 
 ## Releases
 
