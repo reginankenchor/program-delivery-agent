@@ -2,6 +2,11 @@ name: Publish delivery website
 
 on:
   workflow_dispatch:
+    inputs:
+      reuse_published_report:
+        description: Rebuild the site using the currently published report
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,6 +26,7 @@ jobs:
       pages: read
     steps:
       - name: Find the latest successful website artifact
+        if: ${{ !inputs.reuse_published_report }}
         id: source
         uses: actions/github-script@v9
         with:
@@ -49,12 +55,27 @@ jobs:
             core.setFailed('No unexpired website artifact was found. Run Evaluate delivery agent with all projects, wait for Success, then run this publishing workflow again.');
 
       - name: Download the built website
+        if: ${{ !inputs.reuse_published_report }}
         uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ steps.source.outputs.artifact_id }}
           run-id: ${{ steps.source.outputs.run_id }}
           github-token: ${{ github.token }}
           path: _site
+
+      - name: Read the site source
+        if: ${{ inputs.reuse_published_report }}
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build with the currently published report
+        if: ${{ inputs.reuse_published_report }}
+        run: |
+          curl --fail --silent --show-error --max-time 30 --max-filesize 5242880 \
+            https://reginankenchor.github.io/program-delivery-agent/data/latest-report.json \
+            --output "$RUNNER_TEMP/published-report.json"
+          python3 scripts/build_site.py --report "$RUNNER_TEMP/published-report.json"
 
       - name: Check the website and its report
         run: |
