@@ -8,8 +8,15 @@ const fixtures=JSON.parse(fs.readFileSync(new URL('../site/data/fixtures.json',i
 const code=fs.readFileSync(new URL('../site/app.js',import.meta.url),'utf8').replace(/^import .*?;\n/,'');
 async function harness(){
   const nodes=Object.fromEntries(['page','pageLabel','reportFile','toast','runLabel','content'].map(k=>[k,{innerHTML:'',textContent:'',className:'',files:[],addEventListener(type,fn){this[type]=fn;},focus(){},click(){this.clicked=true;}}]));
+  const options = [];
+  nodes.demoRun = {
+    value:'v1', disabled:true,
+    addEventListener(type, handler){this[type]=handler;},
+    querySelector(){return options.find(option => option.value === 'imported');},
+    append(option){options.push(option);option.remove=()=>options.splice(options.indexOf(option),1);}
+  };
   const location={hash:'#/agent'};
-  const context={...model,e:model.escapeHTML,console,location,URL,URLSearchParams,Blob,setTimeout:()=>0,clearTimeout(){},fetch:async url=>({ok:true,json:async()=>structuredClone(url.includes('fixtures')?fixtures:saved)}),window:{addEventListener(){},scrollTo(){}},document:{getElementById:id=>nodes[id],querySelectorAll:()=>[],addEventListener(){},title:''}};
+  const context={...model,e:model.escapeHTML,console,location,URL,URLSearchParams,Blob,setTimeout:()=>0,clearTimeout(){},fetch:async url=>({ok:true,json:async()=>structuredClone(url.includes('fixtures')?fixtures:saved)}),window:{addEventListener(){},scrollTo(){}},document:{createElement:()=>({}),getElementById:id=>nodes[id],querySelectorAll:()=>[],addEventListener(){},title:''}};
   const api=await vm.runInNewContext('(async()=>{'+code+';return {render,setRun(value){run=normalizeRun(value);imported=true;},getRun(){return run;}};})()',context);
   return {api,nodes,location,html:()=>nodes.page.innerHTML};
 }
@@ -24,3 +31,16 @@ test('actual import exposes recorded execution and source provenance',async()=>{
 test('invalid file import preserves the existing run',async()=>{const h=await harness();h.nodes.reportFile.files=[{size:100,text:async()=>'{invalid'}];await h.nodes.reportFile.change();assert.match(h.nodes.toast.textContent,/Could not import/);assert.equal(h.api.getRun().projects.length,3);});
 test('model output renders as escaped text, including inspector JSON',async()=>{const h=await harness();const r=structuredClone(saved);r.projects[0].report.finding='<img src=x onerror="evil()">';h.api.setRun(r);h.location.hash='#/project/RFP-001/finding';h.api.render();assert.doesNotMatch(h.html(),/<img src=x/);assert.match(h.html(),/&lt;img/);});
 test('missing data view warns against inferring alignment',async()=>{const h=await harness();h.location.hash='#/project/RFP-003/finding';h.api.render();assert.match(h.html(),/Do not infer alignment from context/);});
+
+test('Version 1 restores the saved report after a local import',async()=>{
+  const h=await harness();
+  assert.equal(h.nodes.demoRun.disabled,false);
+  const r=structuredClone(saved);r.projects[0].project_name='Imported project';
+  h.nodes.reportFile.files=[{size:100,text:async()=>JSON.stringify(r)}];
+  await h.nodes.reportFile.change();
+  assert.equal(h.nodes.demoRun.value,'imported');
+  assert.match(h.html(),/Imported project/);
+  h.nodes.demoRun.value='v1';h.nodes.demoRun.change();
+  assert.match(h.html(),/CSV Export Delivery/);
+  assert.doesNotMatch(h.html(),/Imported project/);
+});
